@@ -413,7 +413,6 @@ func listenUDP(ctx context.Context) {
 
 		// 최소 헤더 크기 확인
 		if n < 8 {
-			// 텍스트 메시지
 			msg := string(buffer[:n])
 			if !strings.Contains(msg, "펀칭!") {
 				runtime.EventsEmit(ctx, "new-message-received", map[string]string{
@@ -430,7 +429,7 @@ func listenUDP(ctx context.Context) {
 		totalChunks := binary.BigEndian.Uint16(buffer[6:8])
 		chunkData := buffer[8:n]
 
-		// 텍스트 메시지 필터링 (frameID가 비정상적으로 크면 텍스트로 간주)
+		// 텍스트 메시지 필터링
 		if totalChunks == 0 || totalChunks > 1000 {
 			msg := string(buffer[:n])
 			if !strings.Contains(msg, "펀칭!") {
@@ -452,19 +451,30 @@ func listenUDP(ctx context.Context) {
 
 		// 모든 청크가 도착했는지 확인
 		if len(frameBuffers[frameID]) == int(totalChunks) {
-			// 프레임 재조립
+			// ✅ 청크를 순서대로 재조립 (매우 중요!)
 			var completeFrame []byte
 			for i := uint16(0); i < totalChunks; i++ {
-				completeFrame = append(completeFrame, frameBuffers[frameID][i]...)
+				chunk, exists := frameBuffers[frameID][i]
+				if !exists {
+					log.Printf("❌ 청크 %d/%d 누락! 프레임 %d 버림", i, totalChunks, frameID)
+					delete(frameBuffers, frameID)
+					frameBuffersMux.Unlock()
+					continue
+				}
+				completeFrame = append(completeFrame, chunk...)
 			}
 
-			// 오래된 버퍼 정리 (메모리 누수 방지)
+			// 오래된 버퍼 정리
 			delete(frameBuffers, frameID)
 
-			// 프레임 이벤트 발생
-			if isImageData(completeFrame) {
-				log.Printf("📥 프레임 완성: %d bytes (%d chunks) from %s", len(completeFrame), totalChunks, addrStr)
+			// ✅ JPEG 매직 넘버 확인
+			if len(completeFrame) > 0 && isImageData(completeFrame) {
+				log.Printf("📥 프레임 완성: %d bytes (%d chunks) from %s - JPEG 시작: %02X %02X %02X",
+					len(completeFrame), totalChunks, addrStr, completeFrame[0], completeFrame[1], completeFrame[2])
 				runtime.EventsEmit(ctx, "frame-received", completeFrame)
+			} else {
+				log.Printf("❌ 잘못된 이미지 데이터: %d bytes, 시작: %02X %02X %02X",
+					len(completeFrame), completeFrame[0], completeFrame[1], completeFrame[2])
 			}
 		}
 		frameBuffersMux.Unlock()
