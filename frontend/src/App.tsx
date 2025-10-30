@@ -125,7 +125,7 @@ function App() {
             captureFrame();
 
             // Go 백엔드의 StartStreaming 호출
-            StartStreaming();
+            // StartStreaming();
 
         } catch (err) {
             console.error("Webcam access failed:", err);

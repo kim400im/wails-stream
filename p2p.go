@@ -357,7 +357,7 @@ func getPublicIP() string {
 
 // listenUDP 함수 수정
 func listenUDP(ctx context.Context) {
-	buffer := make([]byte, 100000) // 더 큰 버퍼 (이미지 데이터 크기)
+	buffer := make([]byte, 100000)
 
 	for {
 		n, addr, err := udpConn.ReadFromUDP(buffer)
@@ -374,23 +374,15 @@ func listenUDP(ctx context.Context) {
 		}
 		peersMux.Unlock()
 
-		// 받은 데이터가 RTP 패킷인지 확인
-		packet := &rtp.Packet{}
-		if err := packet.Unmarshal(buffer[:n]); err == nil {
-			// RTP 패킷이라면 무시 (비디오 스트리밍)
-			continue
+		// 프레임 데이터인지 확인
+		if isImageData(buffer[:n]) {
+			runtime.EventsEmit(ctx, "frame-received", buffer[:n])
 		} else {
-			// 프레임 데이터인지 확인 (PNG/JPEG 매직 넘버 확인)
-			if isImageData(buffer[:n]) {
-				// ✅ 프레임 데이터 전송
-				runtime.EventsEmit(ctx, "frame-received", buffer[:n])
-			} else {
-				// 텍스트 메시지
-				runtime.EventsEmit(ctx, "new-message-received", map[string]string{
-					"sender":  addrStr,
-					"message": string(buffer[:n]),
-				})
-			}
+			// 텍스트 메시지
+			runtime.EventsEmit(ctx, "new-message-received", map[string]string{
+				"sender":  addrStr,
+				"message": string(buffer[:n]),
+			})
 		}
 	}
 }
