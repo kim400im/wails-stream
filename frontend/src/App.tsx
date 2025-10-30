@@ -164,21 +164,28 @@ function App() {
                         
                         canvas.toBlob(async (blob) => {
                             if (blob && streamingRef.current) {
+                                // ✅ 방법 1: ArrayBuffer → number[] 확실하게
                                 const arrayBuffer = await blob.arrayBuffer();
-                                const byteArray = new Uint8Array(arrayBuffer);
+                                const uint8Array = new Uint8Array(arrayBuffer);
+                                const numberArray: number[] = [];
+                                
+                                for (let i = 0; i < uint8Array.length; i++) {
+                                    numberArray.push(uint8Array[i]);
+                                }
                                 
                                 frameCount++;
                                 if (frameCount % 30 === 0) {
-                                    console.log(`📤 프레임 전송 #${frameCount}: ${byteArray.length} bytes`);
+                                    console.log(`📤 전송 준비: ${numberArray.length} bytes`);
+                                    console.log(`🔍 첫 3바이트: ${numberArray[0].toString(16)} ${numberArray[1].toString(16)} ${numberArray[2].toString(16)}`);
                                 }
                                 
                                 try {
-                                    await SendFrameData(Array.from(byteArray));
+                                    await SendFrameData(numberArray);
                                 } catch (err) {
                                     console.error('❌ SendFrameData 실패:', err);
                                 }
                             }
-                        }, 'image/jpeg', 0.6); // ✅ 품질 낮춤 (0.7 → 0.6)
+                        }, 'image/jpeg', 0.6);
                     }
                 }
                 
