@@ -145,18 +145,23 @@ func (a *App) SendMessage(text string) {
 	}
 }
 
-// ✅ 새로운 함수: 프런트엔드에서 받은 프레임 데이터 처리
 func (a *App) SendFrameData(frameData []byte) {
 	peersMux.Lock()
 	defer peersMux.Unlock()
 
+	log.Printf("📤 프레임 전송 시도: %d bytes, 피어 수: %d", len(frameData), len(peers))
+
 	if len(peers) > 0 {
-		// 모든 피어에게 프레임 데이터 전송
-		for _, peerAddr := range peers {
-			if _, err := udpConn.WriteToUDP(frameData, peerAddr); err != nil {
-				log.Printf("프레임 전송 실패: %v", err)
+		for peerAddrStr, peerAddr := range peers {
+			n, err := udpConn.WriteToUDP(frameData, peerAddr)
+			if err != nil {
+				log.Printf("❌ 프레임 전송 실패 (%s): %v", peerAddrStr, err)
+			} else {
+				log.Printf("✅ 프레임 전송 성공 (%s): %d bytes", peerAddrStr, n)
 			}
 		}
+	} else {
+		log.Println("⚠️  연결된 피어가 없습니다")
 	}
 }
 
@@ -372,9 +377,13 @@ func listenUDP(ctx context.Context) {
 
 		// 프레임 데이터인지 확인
 		if isImageData(buffer[:n]) {
+			log.Printf("📥 프레임 수신: %d bytes from %s", n, addrStr)
 			runtime.EventsEmit(ctx, "frame-received", buffer[:n])
 		} else {
 			// 텍스트 메시지
+			if !strings.Contains(string(buffer[:n]), "펀칭!") {
+				log.Printf("💬 메시지 수신 from %s: %s", addrStr, string(buffer[:n]))
+			}
 			runtime.EventsEmit(ctx, "new-message-received", map[string]string{
 				"sender":  addrStr,
 				"message": string(buffer[:n]),

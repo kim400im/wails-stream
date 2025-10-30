@@ -5,7 +5,6 @@ go 1.23
 require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/interceptor v0.1.41
-	github.com/pion/mediadevices v0.7.2
 	github.com/pion/rtp v1.8.25
 	github.com/pion/webrtc/v4 v4.1.6
 	github.com/wailsapp/wails/v2 v2.10.2
@@ -49,7 +48,6 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
-	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
