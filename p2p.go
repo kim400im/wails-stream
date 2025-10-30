@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"encoding/binary"
+
 	"github.com/gorilla/websocket"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -79,12 +81,25 @@ type ClientInfo struct {
 }
 
 var (
-	udpConn  *net.UDPConn
-	myInfo   ClientInfo
-	peers    = make(map[string]*net.UDPAddr) // key: "ip:port" 문자열
-	peersMux = &sync.Mutex{}
-	ws       *websocket.Conn
+	udpConn         *net.UDPConn
+	myInfo          ClientInfo
+	peers           = make(map[string]*net.UDPAddr) // key: "ip:port" 문자열
+	peersMux        = &sync.Mutex{}
+	ws              *websocket.Conn
+	frameBuffers    = make(map[uint32]map[uint16][]byte) // frameID -> chunkID -> data
+	frameBuffersMux = &sync.Mutex{}
 )
+
+const (
+	MaxUDPPacketSize = 1400 // 안전한 UDP 패킷 크기
+)
+
+// 프레임 헤더 구조
+type FrameHeader struct {
+	FrameID     uint32 // 프레임 식별자
+	ChunkID     uint16 // 현재 청크 번호
+	TotalChunks uint16 // 전체 청크 개수
+}
 
 // --- 프런트엔드에서 호출될 함수들 ---
 
@@ -149,19 +164,40 @@ func (a *App) SendFrameData(frameData []byte) {
 	peersMux.Lock()
 	defer peersMux.Unlock()
 
-	log.Printf("📤 프레임 전송 시도: %d bytes, 피어 수: %d", len(frameData), len(peers))
+	if len(peers) == 0 {
+		return
+	}
 
-	if len(peers) > 0 {
+	// 프레임을 청크로 분할
+	frameID := uint32(time.Now().UnixNano() / 1000000) // 밀리초 단위 타임스탬프
+	dataSize := len(frameData)
+	headerSize := 8 // FrameID(4) + ChunkID(2) + TotalChunks(2)
+	chunkDataSize := MaxUDPPacketSize - headerSize
+	totalChunks := (dataSize + chunkDataSize - 1) / chunkDataSize
+
+	log.Printf("📤 프레임 전송: %d bytes → %d chunks", dataSize, totalChunks)
+
+	for chunkID := 0; chunkID < totalChunks; chunkID++ {
+		start := chunkID * chunkDataSize
+		end := start + chunkDataSize
+		if end > dataSize {
+			end = dataSize
+		}
+
+		// 헤더 생성
+		packet := make([]byte, headerSize+end-start)
+		binary.BigEndian.PutUint32(packet[0:4], frameID)
+		binary.BigEndian.PutUint16(packet[4:6], uint16(chunkID))
+		binary.BigEndian.PutUint16(packet[6:8], uint16(totalChunks))
+		copy(packet[8:], frameData[start:end])
+
+		// 모든 피어에게 전송
 		for peerAddrStr, peerAddr := range peers {
-			n, err := udpConn.WriteToUDP(frameData, peerAddr)
+			_, err := udpConn.WriteToUDP(packet, peerAddr)
 			if err != nil {
-				log.Printf("❌ 프레임 전송 실패 (%s): %v", peerAddrStr, err)
-			} else {
-				log.Printf("✅ 프레임 전송 성공 (%s): %d bytes", peerAddrStr, n)
+				log.Printf("❌ 청크 %d/%d 전송 실패 (%s): %v", chunkID+1, totalChunks, peerAddrStr, err)
 			}
 		}
-	} else {
-		log.Println("⚠️  연결된 피어가 없습니다")
 	}
 }
 
@@ -358,7 +394,7 @@ func getPublicIP() string {
 
 // listenUDP 함수 수정
 func listenUDP(ctx context.Context) {
-	buffer := make([]byte, 100000)
+	buffer := make([]byte, MaxUDPPacketSize+100)
 
 	for {
 		n, addr, err := udpConn.ReadFromUDP(buffer)
@@ -375,20 +411,63 @@ func listenUDP(ctx context.Context) {
 		}
 		peersMux.Unlock()
 
-		// 프레임 데이터인지 확인
-		if isImageData(buffer[:n]) {
-			log.Printf("📥 프레임 수신: %d bytes from %s", n, addrStr)
-			runtime.EventsEmit(ctx, "frame-received", buffer[:n])
-		} else {
+		// 최소 헤더 크기 확인
+		if n < 8 {
 			// 텍스트 메시지
-			if !strings.Contains(string(buffer[:n]), "펀칭!") {
-				log.Printf("💬 메시지 수신 from %s: %s", addrStr, string(buffer[:n]))
+			msg := string(buffer[:n])
+			if !strings.Contains(msg, "펀칭!") {
+				runtime.EventsEmit(ctx, "new-message-received", map[string]string{
+					"sender":  addrStr,
+					"message": msg,
+				})
 			}
-			runtime.EventsEmit(ctx, "new-message-received", map[string]string{
-				"sender":  addrStr,
-				"message": string(buffer[:n]),
-			})
+			continue
 		}
+
+		// 프레임 데이터인지 확인 (헤더 파싱 시도)
+		frameID := binary.BigEndian.Uint32(buffer[0:4])
+		chunkID := binary.BigEndian.Uint16(buffer[4:6])
+		totalChunks := binary.BigEndian.Uint16(buffer[6:8])
+		chunkData := buffer[8:n]
+
+		// 텍스트 메시지 필터링 (frameID가 비정상적으로 크면 텍스트로 간주)
+		if totalChunks == 0 || totalChunks > 1000 {
+			msg := string(buffer[:n])
+			if !strings.Contains(msg, "펀칭!") {
+				runtime.EventsEmit(ctx, "new-message-received", map[string]string{
+					"sender":  addrStr,
+					"message": msg,
+				})
+			}
+			continue
+		}
+
+		// 청크 수집
+		frameBuffersMux.Lock()
+		if frameBuffers[frameID] == nil {
+			frameBuffers[frameID] = make(map[uint16][]byte)
+		}
+		frameBuffers[frameID][chunkID] = make([]byte, len(chunkData))
+		copy(frameBuffers[frameID][chunkID], chunkData)
+
+		// 모든 청크가 도착했는지 확인
+		if len(frameBuffers[frameID]) == int(totalChunks) {
+			// 프레임 재조립
+			var completeFrame []byte
+			for i := uint16(0); i < totalChunks; i++ {
+				completeFrame = append(completeFrame, frameBuffers[frameID][i]...)
+			}
+
+			// 오래된 버퍼 정리 (메모리 누수 방지)
+			delete(frameBuffers, frameID)
+
+			// 프레임 이벤트 발생
+			if isImageData(completeFrame) {
+				log.Printf("📥 프레임 완성: %d bytes (%d chunks) from %s", len(completeFrame), totalChunks, addrStr)
+				runtime.EventsEmit(ctx, "frame-received", completeFrame)
+			}
+		}
+		frameBuffersMux.Unlock()
 	}
 }
 
