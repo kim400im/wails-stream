@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"strconv"
@@ -19,9 +18,6 @@ import (
 
 	// *** 스트리밍을 위한 Pion 라이브러리 추가 ***
 	"github.com/pion/interceptor"
-	"github.com/pion/mediadevices"
-	"github.com/pion/mediadevices/pkg/codec/vpx"
-	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -208,71 +204,71 @@ func (a *App) StartStreaming() {
 
 func streamWebcamWithPion(videoTrack *webrtc.TrackLocalStaticRTP, ctx context.Context) {
 	// VP8 인코더 설정
-	vpxParams, err := vpx.NewVP8Params()
-	if err != nil {
-		log.Printf("VP8 파라미터 생성 실패: %v", err)
-		return
-	}
-	vpxParams.BitRate = 1_000_000 // 1mbps
+	// vpxParams, err := vpx.NewVP8Params()
+	// if err != nil {
+	// 	log.Printf("VP8 파라미터 생성 실패: %v", err)
+	// 	return
+	// }
+	// vpxParams.BitRate = 1_000_000 // 1mbps
 
-	codecSelector := mediadevices.NewCodecSelector(
-		mediadevices.WithVideoEncoders(&vpxParams),
-	)
+	// codecSelector := mediadevices.NewCodecSelector(
+	// 	mediadevices.WithVideoEncoders(&vpxParams),
+	// )
 
-	// 웹캠 스트림 시작
-	mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
-		Video: func(c *mediadevices.MediaTrackConstraints) {
-			c.Width = prop.Int(1280)
-			c.Height = prop.Int(720)
-		},
-		Codec: codecSelector,
-	})
-	if err != nil {
-		log.Printf("웹캠 접근 실패: %v", err)
-		return
-	}
+	// // 웹캠 스트림 시작
+	// mediaStream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
+	// 	Video: func(c *mediadevices.MediaTrackConstraints) {
+	// 		c.Width = prop.Int(1280)
+	// 		c.Height = prop.Int(720)
+	// 	},
+	// 	Codec: codecSelector,
+	// })
+	// if err != nil {
+	// 	log.Printf("웹캠 접근 실패: %v", err)
+	// 	return
+	// }
 
-	log.Println("웹캠 스트림 시작...")
+	// log.Println("웹캠 스트림 시작...")
 
-	videoTracks := mediaStream.GetVideoTracks()
-	if len(videoTracks) == 0 {
-		log.Println("비디오 트랙을 찾을 수 없습니다")
-		return
-	}
+	// videoTracks := mediaStream.GetVideoTracks()
+	// if len(videoTracks) == 0 {
+	// 	log.Println("비디오 트랙을 찾을 수 없습니다")
+	// 	return
+	// }
 
-	track := videoTracks[0]
-	defer track.Close()
+	// track := videoTracks[0]
+	// defer track.Close()
 
-	// RTP Reader 생성
-	rtpReader, err := track.NewRTPReader(vpxParams.RTPCodec().MimeType, rand.Uint32(), 1000)
-	if err != nil {
-		log.Printf("RTP Reader 생성 실패: %v", err)
-		return
-	}
+	// // RTP Reader 생성
+	// rtpReader, err := track.NewRTPReader(vpxParams.RTPCodec().MimeType, rand.Uint32(), 1000)
+	// if err != nil {
+	// 	log.Printf("RTP Reader 생성 실패: %v", err)
+	// 	return
+	// }
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Println("스트리밍 중지됨")
-			return
-		default:
-		}
+	// for {
+	// 	select {
+	// 	case <-ctx.Done():
+	// 		log.Println("스트리밍 중지됨")
+	// 		return
+	// 	default:
+	// 	}
 
-		pkts, release, err := rtpReader.Read()
-		if err != nil {
-			log.Printf("RTP 읽기 실패: %v", err)
-			return
-		}
+	// 	pkts, release, err := rtpReader.Read()
+	// 	if err != nil {
+	// 		log.Printf("RTP 읽기 실패: %v", err)
+	// 		return
+	// 	}
 
-		for _, pkt := range pkts {
-			if err := videoTrack.WriteRTP(pkt); err != nil {
-				log.Printf("RTP 전송 실패: %v", err)
-				release()
-				return
-			}
-		}
-		release()
-	}
+	// 	for _, pkt := range pkts {
+	// 		if err := videoTrack.WriteRTP(pkt); err != nil {
+	// 			log.Printf("RTP 전송 실패: %v", err)
+	// 			release()
+	// 			return
+	// 		}
+	// 	}
+	// 	release()
+	// }
 }
 
 // --- 내부 동작 함수들 ---
