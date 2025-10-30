@@ -20,7 +20,7 @@ import (
 	// *** 스트리밍을 위한 Pion 라이브러리 추가 ***
 	"github.com/pion/interceptor"
 	"github.com/pion/mediadevices"
-	"github.com/pion/mediadevices/pkg/codec/x264"
+	"github.com/pion/mediadevices/pkg/codec/vpx"
 	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -207,17 +207,16 @@ func (a *App) StartStreaming() {
 }
 
 func streamWebcamWithPion(videoTrack *webrtc.TrackLocalStaticRTP, ctx context.Context) {
-	// x264 인코더 설정
-	x264Params, err := x264.NewParams()
+	// VP8 인코더 설정
+	vpxParams, err := vpx.NewVP8Params()
 	if err != nil {
-		log.Printf("x264 파라미터 생성 실패: %v", err)
+		log.Printf("VP8 파라미터 생성 실패: %v", err)
 		return
 	}
-	x264Params.Preset = x264.PresetMedium
-	x264Params.BitRate = 1_000_000 // 1mbps
+	vpxParams.BitRate = 1_000_000 // 1mbps
 
 	codecSelector := mediadevices.NewCodecSelector(
-		mediadevices.WithVideoEncoders(&x264Params),
+		mediadevices.WithVideoEncoders(&vpxParams),
 	)
 
 	// 웹캠 스트림 시작
@@ -245,7 +244,7 @@ func streamWebcamWithPion(videoTrack *webrtc.TrackLocalStaticRTP, ctx context.Co
 	defer track.Close()
 
 	// RTP Reader 생성
-	rtpReader, err := track.NewRTPReader(x264Params.RTPCodec().MimeType, rand.Uint32(), 1000)
+	rtpReader, err := track.NewRTPReader(vpxParams.RTPCodec().MimeType, rand.Uint32(), 1000)
 	if err != nil {
 		log.Printf("RTP Reader 생성 실패: %v", err)
 		return
