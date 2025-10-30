@@ -21,10 +21,12 @@ function App() {
     const [peerList, setPeerList] = useState<ClientInfo[]>([]);
     const [isStreaming, setIsStreaming] = useState(false);
     
-    // Ref로 상태 관리
     const streamingRef = useRef(false);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const animationFrameRef = useRef<number>(0);
+    
+    // ✅ Canvas ref 추가
+    const receivedCanvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
         const cleanupMsgListener = EventsOn('new-message-received', (data: MessageData) => {
@@ -37,24 +39,34 @@ function App() {
             setPeerList(peers || []);
         });
 
+        // ✅ Canvas로 프레임 렌더링
         const cleanupFrameListener = EventsOn('frame-received', (frameData: number[]) => {
             console.log(`📥 프레임 수신: ${frameData.length} bytes`);
             
             const blob = new Blob([new Uint8Array(frameData)], { type: 'image/jpeg' });
             const url = URL.createObjectURL(blob);
             
-            const imgElement = document.getElementById('received-frame') as HTMLImageElement;
-            if (imgElement) {
-                imgElement.onload = () => {
-                    console.log('✅ 이미지 렌더링 성공');
-                    URL.revokeObjectURL(url);
-                };
-                imgElement.onerror = () => {
-                    console.error('❌ 이미지 렌더링 실패');
-                    URL.revokeObjectURL(url);
-                };
-                imgElement.src = url;
-            }
+            const img = new Image();
+            img.onload = () => {
+                const canvas = receivedCanvasRef.current;
+                if (canvas) {
+                    const ctx = canvas.getContext('2d');
+                    if (ctx) {
+                        // 캔버스 크기가 설정되지 않았으면 이미지 크기로 설정
+                        if (canvas.width === 0) {
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                        }
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    }
+                }
+                URL.revokeObjectURL(url);
+            };
+            img.onerror = () => {
+                console.error('❌ 이미지 로드 실패');
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
         });
 
         return () => {
@@ -99,7 +111,6 @@ function App() {
             streamingRef.current = true;
             setChatLog(prevLog => [...prevLog, "System: Webcam streaming started..."]);
 
-            // 비디오 요소 생성
             let videoElement = document.getElementById('streaming-video') as HTMLVideoElement;
             if (!videoElement) {
                 videoElement = document.createElement('video');
@@ -116,7 +127,6 @@ function App() {
             videoElement.muted = true;
             videoElement.playsInline = true;
 
-            // 캔버스 생성
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             canvas.width = 640;
@@ -130,7 +140,6 @@ function App() {
                     return;
                 }
 
-                // 비디오가 준비되었는지 확인
                 if (videoElement && videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
                     if (ctx) {
                         ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
@@ -151,17 +160,15 @@ function App() {
                                     console.error('❌ SendFrameData 실패:', err);
                                 }
                             }
-                        }, 'image/jpeg', 0.7);
+                        }, 'image/jpeg', 0.6); // ✅ 품질 낮춤 (0.7 → 0.6)
                     }
                 }
                 
-                // 다음 프레임 스케줄
                 if (streamingRef.current) {
                     animationFrameRef.current = setTimeout(() => captureFrame(), 33) as unknown as number;
                 }
             };
 
-            // 비디오 준비 완료 후 캡처 시작
             videoElement.onloadeddata = () => {
                 console.log('✅ 비디오 스트림 준비 완료, 캡처 시작');
                 captureFrame();
@@ -181,12 +188,10 @@ function App() {
         streamingRef.current = false;
         setIsStreaming(false);
         
-        // 타이머 정리
         if (animationFrameRef.current) {
             clearTimeout(animationFrameRef.current);
         }
         
-        // 미디어 스트림 중지
         if (mediaStreamRef.current) {
             mediaStreamRef.current.getTracks().forEach(track => {
                 console.log('🛑 트랙 중지:', track.label);
@@ -195,7 +200,6 @@ function App() {
             mediaStreamRef.current = null;
         }
         
-        // 비디오 요소 제거
         const videoElement = document.getElementById('streaming-video');
         if (videoElement) {
             videoElement.remove();
@@ -235,15 +239,17 @@ function App() {
                 </div>
                 <div className="video-received">
                     <h3>Received Stream</h3>
-                    <img 
-                        id="received-frame" 
+                    {/* ✅ img 태그 대신 canvas 사용 */}
+                    <canvas 
+                        ref={receivedCanvasRef}
+                        width={640}
+                        height={480}
                         style={{
                             width: '640px', 
                             height: '480px', 
                             border: '1px solid black',
                             backgroundColor: '#000'
                         }} 
-                        alt="Received Stream"
                     />
                 </div>
                 <div className="chat-area">
