@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"encoding/base64"
 	"encoding/binary"
 
 	"github.com/gorilla/websocket"
@@ -161,6 +162,29 @@ func (a *App) SendMessage(text string) {
 }
 
 func (a *App) SendFrameData(frameData []byte) {
+	// ✅ Base64 디코딩 시도
+	decoded, err := base64.StdEncoding.DecodeString(string(frameData))
+	if err == nil {
+		// 디코딩 성공하면 디코딩된 데이터 사용
+		if len(decoded) > 3 {
+			log.Printf("📤 Base64 디코딩 성공: %d → %d bytes, 시작: %02X %02X %02X",
+				len(frameData), len(decoded), decoded[0], decoded[1], decoded[2])
+		}
+		frameData = decoded
+	} else {
+		// 디코딩 실패하면 원본 사용 (이미 바이너리)
+		if len(frameData) > 3 {
+			log.Printf("📤 원본 바이너리: %d bytes, 시작: %02X %02X %02X",
+				len(frameData), frameData[0], frameData[1], frameData[2])
+		}
+	}
+
+	// JPEG 검증
+	if len(frameData) < 3 || frameData[0] != 0xFF || frameData[1] != 0xD8 {
+		log.Printf("❌ 잘못된 JPEG 데이터! 시작: %02X %02X %02X", frameData[0], frameData[1], frameData[2])
+		return
+	}
+
 	peersMux.Lock()
 	defer peersMux.Unlock()
 
@@ -168,14 +192,11 @@ func (a *App) SendFrameData(frameData []byte) {
 		return
 	}
 
-	// 프레임을 청크로 분할
-	frameID := uint32(time.Now().UnixNano() / 1000000) // 밀리초 단위 타임스탬프
+	frameID := uint32(time.Now().UnixNano() / 1000000)
 	dataSize := len(frameData)
-	headerSize := 8 // FrameID(4) + ChunkID(2) + TotalChunks(2)
+	headerSize := 8
 	chunkDataSize := MaxUDPPacketSize - headerSize
 	totalChunks := (dataSize + chunkDataSize - 1) / chunkDataSize
-
-	log.Printf("📤 프레임 전송: %d bytes → %d chunks", dataSize, totalChunks)
 
 	for chunkID := 0; chunkID < totalChunks; chunkID++ {
 		start := chunkID * chunkDataSize
@@ -184,19 +205,14 @@ func (a *App) SendFrameData(frameData []byte) {
 			end = dataSize
 		}
 
-		// 헤더 생성
 		packet := make([]byte, headerSize+end-start)
 		binary.BigEndian.PutUint32(packet[0:4], frameID)
 		binary.BigEndian.PutUint16(packet[4:6], uint16(chunkID))
 		binary.BigEndian.PutUint16(packet[6:8], uint16(totalChunks))
 		copy(packet[8:], frameData[start:end])
 
-		// 모든 피어에게 전송
-		for peerAddrStr, peerAddr := range peers {
-			_, err := udpConn.WriteToUDP(packet, peerAddr)
-			if err != nil {
-				log.Printf("❌ 청크 %d/%d 전송 실패 (%s): %v", chunkID+1, totalChunks, peerAddrStr, err)
-			}
+		for _, peerAddr := range peers {
+			udpConn.WriteToUDP(packet, peerAddr)
 		}
 	}
 }
