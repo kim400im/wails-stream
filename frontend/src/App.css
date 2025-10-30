@@ -1,0 +1,114 @@
+/* 전체적인 폰트와 배경색 설정 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    background-color: #f0f2f5;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    color: #333; /* 기본 글자색을 검은색 계열로 설정 */
+}
+
+/* 메인 컨테이너 */
+.container {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 90%;
+    max-width: 800px;
+}
+
+h1, h3 {
+    text-align: center;
+    color: #333;
+}
+
+h3 {
+    text-align: left;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+    margin-top: 0;
+}
+
+/* 입력창과 버튼을 묶는 박스 */
+.input-box {
+    display: flex;
+    margin-bottom: 1rem;
+}
+
+input {
+    flex-grow: 1;
+    padding: 0.8rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+button {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-left: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+/* 메인 콘텐츠 영역 (피어 목록 + 채팅) */
+.main-content {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+/* 피어 목록 */
+.peer-list {
+    width: 30%;
+    border-right: 1px solid #eee;
+    padding-right: 1.5rem;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+li {
+    padding: 0.2rem 0;
+    font-size: 0.9rem;
+    color: #555;
+    word-wrap: break-word;
+}
+
+/* 채팅 영역 */
+.chat-area {
+    width: 70%;
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-box {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 1rem;
+    height: 300px;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    background-color: #fafafa;
+}
+
+/* 채팅 메시지 스타일 */
+#chat-box p {
+    margin: 0 0 0.75rem 0;
+    word-wrap: break-word;
+    color: black; /* 채팅 글씨를 검은색으로 명확하게 지정 */
+    line-height: 1.4;
+}
