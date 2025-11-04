@@ -40,51 +40,98 @@ function App() {
         });
 
         // ✅ Canvas로 프레임 렌더링
-        const cleanupFrameListener = EventsOn('frame-received', (frameData: number[]) => {
-            console.log(`📥 프레임 수신: ${frameData.length} bytes`);
-            
-            // ✅ JPEG 매직 넘버 확인
-            if (frameData.length < 3) {
-                console.error('❌ 데이터 너무 짧음:', frameData.length);
-                return;
-            }
-            
-            const magicNumbers = `${frameData[0].toString(16)} ${frameData[1].toString(16)} ${frameData[2].toString(16)}`;
-            console.log(`🔍 매직 넘버: ${magicNumbers}`);
-            
-            // JPEG는 FF D8 FF로 시작해야 함
-            if (frameData[0] !== 0xFF || frameData[1] !== 0xD8) {
-                console.error('❌ JPEG 시그니처 불일치! 예상: ff d8, 실제:', magicNumbers);
-                return;
-            }
-            
-            const blob = new Blob([new Uint8Array(frameData)], { type: 'image/jpeg' });
-            const url = URL.createObjectURL(blob);
-            
-            console.log('🖼️ Blob URL 생성:', url);
-            
-            const img = new Image();
-            img.onload = () => {
-                console.log('✅ 이미지 로드 성공:', img.width, 'x', img.height);
-                const canvas = receivedCanvasRef.current;
-                if (canvas) {
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        if (canvas.width === 0) {
-                            canvas.width = img.width;
-                            canvas.height = img.height;
-                        }
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const cleanupFrameListener = EventsOn('frame-received', (frameData: any) => {
+            try {
+                // ✅ frameData가 string인 경우 (Base64)
+                if (typeof frameData === 'string') {
+                    console.log(`📥 프레임 수신: ${frameData.length} chars (Base64)`);
+                    
+                    // Base64 디코딩
+                    const decodedString = atob(frameData);
+                    const uint8Array = new Uint8Array(decodedString.length);
+                    
+                    for (let i = 0; i < decodedString.length; i++) {
+                        uint8Array[i] = decodedString.charCodeAt(i);
                     }
+                    
+                    console.log(`✅ 디코딩 완료: ${uint8Array.length} bytes`);
+                    console.log(`🔍 매직 넘버: ${uint8Array[0].toString(16)} ${uint8Array[1].toString(16)} ${uint8Array[2].toString(16)}`);
+                    
+                    // JPEG 검증
+                    if (uint8Array[0] !== 0xFF || uint8Array[1] !== 0xD8) {
+                        console.error('❌ JPEG 시그니처 불일치!');
+                        return;
+                    }
+                    
+                    // 이미지 렌더링
+                    const blob = new Blob([uint8Array], { type: 'image/jpeg' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const img = new Image();
+                    img.onload = () => {
+                        console.log('✅ 이미지 로드 성공:', img.width, 'x', img.height);
+                        const canvas = receivedCanvasRef.current;
+                        if (canvas) {
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                                if (canvas.width === 0) {
+                                    canvas.width = img.width;
+                                    canvas.height = img.height;
+                                }
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            }
+                        }
+                        URL.revokeObjectURL(url);
+                    };
+                    img.onerror = (e) => {
+                        console.error('❌ 이미지 로드 실패:', e);
+                        URL.revokeObjectURL(url);
+                    };
+                    img.src = url;
                 }
-                URL.revokeObjectURL(url);
-            };
-            img.onerror = (e) => {
-                console.error('❌ 이미지 로드 실패:', e);
-                console.error('❌ 데이터 샘플 (처음 20 bytes):', frameData.slice(0, 20));
-                URL.revokeObjectURL(url);
-            };
-            img.src = url;
+                // ✅ 숫자 배열인 경우 (혹시 몰라서)
+                else if (Array.isArray(frameData)) {
+                    console.log(`📥 프레임 수신: ${frameData.length} bytes (array)`);
+                    const uint8Array = new Uint8Array(frameData);
+                    
+                    console.log(`🔍 매직 넘버: ${uint8Array[0].toString(16)} ${uint8Array[1].toString(16)} ${uint8Array[2].toString(16)}`);
+                    
+                    // JPEG 검증
+                    if (uint8Array[0] !== 0xFF || uint8Array[1] !== 0xD8) {
+                        console.error('❌ JPEG 시그니처 불일치!');
+                        return;
+                    }
+                    
+                    // 이미지 렌더링
+                    const blob = new Blob([uint8Array], { type: 'image/jpeg' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const img = new Image();
+                    img.onload = () => {
+                        console.log('✅ 이미지 로드 성공:', img.width, 'x', img.height);
+                        const canvas = receivedCanvasRef.current;
+                        if (canvas) {
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                                if (canvas.width === 0) {
+                                    canvas.width = img.width;
+                                    canvas.height = img.height;
+                                }
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            }
+                        }
+                        URL.revokeObjectURL(url);
+                    };
+                    img.onerror = (e) => {
+                        console.error('❌ 이미지 로드 실패:', e);
+                        URL.revokeObjectURL(url);
+                    };
+                    img.src = url;
+                }
+                
+            } catch (err) {
+                console.error('❌ 프레임 처리 실패:', err);
+            }
         });
 
         return () => {
