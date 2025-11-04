@@ -27,6 +27,7 @@ function App() {
     
     // ✅ Canvas ref 추가
     const receivedCanvasRef = useRef<HTMLCanvasElement>(null);
+    const [quality, setQuality] = useState('720p'); // ✅ 기본값 '720p'로 설정
 
     useEffect(() => {
         const cleanupMsgListener = EventsOn('new-message-received', (data: MessageData) => {
@@ -74,9 +75,10 @@ function App() {
                         if (canvas) {
                             const ctx = canvas.getContext('2d');
                             if (ctx) {
-                                if (canvas.width === 0) {
+                                if (canvas.width !== img.width || canvas.height !== img.height) {
                                     canvas.width = img.width;
                                     canvas.height = img.height;
+                                    console.log(`캔버스 해상도 ${img.width}x${img.height}로 업데이트됨`);
                                 }
                                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                             }
@@ -160,12 +162,18 @@ function App() {
     const handleStartStreaming = async () => {
         try {
             console.log('🎥 웹캠 접근 시도...');
+
+            const qualityConstraints = {
+                '1080p': { width: { ideal: 1920 }, height: { ideal: 1080 } },
+                '720p':  { width: { ideal: 1280 }, height: { ideal: 720 } },
+                '480p':  { width: { ideal: 640 },  height: { ideal: 480 } },
+            };
             
+            const selectedConstraints = qualityConstraints[quality as keyof typeof qualityConstraints];
+
+            // ✅ 하드코딩된 해상도 대신 선택된 해상도(selectedConstraints) 사용
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 640 },
-                    height: { ideal: 480 }
-                },
+                video: selectedConstraints,
                 audio: false
             });
 
@@ -194,8 +202,8 @@ function App() {
 
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            canvas.width = 640;
-            canvas.height = 480;
+            canvas.width = selectedConstraints.width.ideal;
+            canvas.height = selectedConstraints.height.ideal;
 
             let frameCount = 0;
 
@@ -292,6 +300,17 @@ function App() {
                     onKeyPress={(e) => e.key === 'Enter' && handleJoinRoom()}
                 />
                 <button onClick={handleJoinRoom}>Join Room</button>
+                {/* ✅ 화질 선택 드롭다운 메뉴 추가 */}
+                <select 
+                    value={quality} 
+                    onChange={(e) => setQuality(e.target.value)}
+                    disabled={isStreaming} // 스트리밍 중에는 변경 불가
+                    style={{ padding: '0.8rem', marginLeft: '0.5rem', borderRadius: '4px' }}
+                >
+                    <option value="480p">480p</option>
+                    <option value="720p">720p</option>
+                    <option value="1080p">1080p</option>
+                </select>
                 <button 
                     onClick={isStreaming ? handleStopStreaming : handleStartStreaming}
                     style={{backgroundColor: isStreaming ? '#dc3545' : '#28a745'}}
@@ -314,8 +333,6 @@ function App() {
                     {/* ✅ img 태그 대신 canvas 사용 */}
                     <canvas 
                         ref={receivedCanvasRef}
-                        width={640}
-                        height={480}
                         style={{
                             width: '640px', 
                             height: '480px', 
